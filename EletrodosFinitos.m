@@ -96,7 +96,17 @@ Argumentos:
 		padr\[ATilde]o = False";
 
 
-(* ::Section:: *)
+IntegrandoDuplo[emissor_,receptor_,\[Gamma]_,te_,tr_]:=
+Block[{pe,pr,r},
+	pe = emissor[[1]] + te*(emissor[[2]] - emissor[[1]]);
+	pr = receptor[[1]] + tr*(receptor[[2]] - receptor[[1]]);
+	r = Norm[pe - pr];
+	If[r < receptor[[3]], r = receptor[[3]]];
+	Exp[-\[Gamma] r]/r
+]
+
+
+(* ::Section::Closed:: *)
 (*Imped\[AHat]ncia Transversal*)
 
 
@@ -134,7 +144,7 @@ Argumentos:
 	integral: opcional, o valor de \!\(\*SubsuperscriptBox[\(\[Integral]\), \(0\), \(Lr\)]Exp[-\[Gamma] \[Eta]] Log[Nf] dl.";
 
 
-(* ::Section:: *)
+(* ::Section::Closed:: *)
 (*Imped\[AHat]ncia Longitudinal*)
 
 
@@ -280,7 +290,7 @@ Retorna:
 	ZL: matriz de imped\[AHat]ncia longitudinal com efeito das imagens incluso.";
 
 
-(* ::Subsection:: *)
+(* ::Subsection::Closed:: *)
 (*Versao simplificada*)
 
 
@@ -374,6 +384,104 @@ Argumentos:
 	etai: matriz de distancias medias entre eletrodos e imagens;
 	coefReflexao: opicional, o coeficiente de reflex\[ATilde]o para as imagens;
 		padr\[ATilde]o = 1.0
+-------
+Retorna:
+	ZT: matriz de imped\[AHat]ncia transveral com efeito das imagens incluso;
+	ZL: matriz de imped\[AHat]ncia longitudinal com efeito das imagens incluso.";
+
+
+(* ::Subsection:: *)
+(*Versao Integral Dupla*)
+
+
+ImpedanciaEletrodosIntDupla[eletrodos_,\[Gamma]_,c_,\[Mu]_,\[Omega]_,simplificado_:False]:=
+Block[{ZT,ZL,numEletrodos,Ls,integral,\[Eta]},
+	numEletrodos = Dimensions[eletrodos][[1]];
+	ZT = Table[ImpedanciaTransversalPropria[e,c],{e,eletrodos}];
+	ZT = DiagonalMatrix[ZT];
+	ZL = Table[ImpedanciaLongitudinalPropria[e,\[Mu],\[Omega]],{e,eletrodos}];
+	ZL = DiagonalMatrix[ZL];
+	If[numEletrodos === 1, Return[{ZT,ZL}]];
+	Do[
+		Ls = Norm[eletrodos[[i,1]] - eletrodos[[i,2]]];
+		integral = NIntegrate[IntegrandoDuplo[eletrodos[[i]],eletrodos[[k]],\[Gamma],te,tr],{te,0.,1.},{tr,0.,1.}];
+		If[simplificado,
+			\[Eta] = Norm[(eletrodos[[i,1]] + eletrodos[[i,2]])/2 - (eletrodos[[k,1]] + eletrodos[[k,2]])/2];
+			integral = integral Exp[-\[Gamma] \[Eta]];
+		];
+		ZT[[i,k]] = ImpedanciaTransversalMutua[eletrodos[[i]],eletrodos[[k]],\[Gamma],c,integral];
+		ZL[[i,k]] = ImpedanciaLongitudinalMutua[eletrodos[[i]],eletrodos[[k]],\[Gamma],\[Mu],\[Omega],integral];
+		ZT[[k,i]] = ZT[[i,k]];
+		ZL[[k,i]] = ZL[[i,k]];
+		,{i,1,numEletrodos},{k,i,numEletrodos}
+	];
+	Return[{ZT,ZL}]
+]
+ImpedanciaEletrodos::usage=
+"Calcula as matrizes de imped\[AHat]ncia longitudinal e transvesal do conjunto de eletrodos considerando-os imersos em meio homog\[EHat]neo.
+Argumentos:
+	eletrodos: lista de listas dos eletrodos '{{ponto_inicial}, {ponto_final}, raio, imped\[AHat]ncia_interna_total}';
+	\[Gamma]: constante de propaga\[CCedilla]\[ATilde]o do meio;
+	c: condutividade el\[EAcute]trica complexa do meio (\[Sigma] + I \[Omega] \[Epsilon]);
+	\[Mu]: permeabilidade magn\[EAcute]tica do meio;
+	\[Omega]: frequ\[EHat]ncia angular;
+	simplificado: opicional, Booleano se considera Exp[-\[Gamma] \[Eta]] constante ou n\[ATilde]o durante a integra\[CCedilla]\[ATilde]o.
+		padr\[ATilde]o = False
+-------
+Retorna:
+	ZT: matriz de imped\[AHat]ncia transveral;
+	ZL: matriz de imped\[AHat]ncia longitudinal.";
+
+
+IncluirImagensImpedanciaIntDupla[zt_,zl_,eletrodos_,imagens_,\[Gamma]_,c_,\[Mu]_,\[Omega]_,coefReflexao_:1.0,simplificado_:False]:=
+Block[{ZT=zt,ZL=zl,numEletrodos,Ls,integral,\[Eta]},
+	numEletrodos = Dimensions[eletrodos][[1]];
+	(*adicionar mutua com imagem \[AGrave] Z pr\[OAcute]pria*)
+	(*Do[
+		If[imagens[[i]] === Null, Continue[]];
+		Ls = Norm[eletrodos[[i,1]] - eletrodos[[i,2]]];
+		integral = NIntegrate[Integrando[imagens[[i]],eletrodos[[i]],\[Gamma],t,Ls,simplificado],{t,0.,1.},Compiled->False];
+		If[simplificado,
+			\[Eta] = Norm[(imagens[[i,1]] + imagens[[i,2]])/2 - (eletrodos[[i,1]] + eletrodos[[i,2]])/2];
+			integral = integral Exp[-\[Gamma] \[Eta]];
+		];
+		ZT[[i,i]] += coefReflexao ImpedanciaTransversalMutua[imagens[[i]],eletrodos[[i]],\[Gamma],c,integral];
+		ZL[[i,i]] += (1 - coefReflexao) ImpedanciaLongitudinalMutua[imagens[[i]],eletrodos[[i]],\[Gamma],\[Mu],\[Omega],integral];
+		,{i,numEletrodos}
+	];
+	If[numEletrodos === 1, Return[{ZT,ZL}]];*)
+	(*adicionar efeito da imagem \[AGrave] Z m\[UAcute]tua*)
+	Do[
+		If[imagens[[i]] === Null || imagens[[k]] === Null, Continue[]];
+		Ls = Norm[eletrodos[[i,1]] - eletrodos[[i,2]]];
+		integral = NIntegrate[IntegrandoDuplo[eletrodos[[i]],imagens[[k]],\[Gamma],te,tr],{te,0.,1.},{tr,0.,1.}];
+		If[simplificado,
+			\[Eta] = Norm[(imagens[[i,1]] + imagens[[i,2]])/2 - (eletrodos[[k,1]] + eletrodos[[k,2]])/2];
+			integral = integral Exp[-\[Gamma] \[Eta]];
+		];
+		ZT[[i,k]] += coefReflexao ImpedanciaTransversalMutua[imagens[[i]],eletrodos[[k]],\[Gamma],c,integral];
+		ZL[[i,k]] += (1 - coefReflexao) ImpedanciaLongitudinalMutua[imagens[[i]],eletrodos[[k]],\[Gamma],\[Mu],\[Omega],integral];
+		ZT[[k,i]] = ZT[[i,k]];
+		ZL[[k,i]] = ZL[[i,k]];
+		,{i,1,numEletrodos},{k,i,numEletrodos}
+	];
+	Return[{ZT,ZL}]
+]
+IncluirImagensImpedancia::usage=
+"Adiciona \[AGrave]s matrizes de imped\[AHat]ncia longitudinal e transvesal o efeito das imagens. Se houver m\[UAcute]ltiplas imagens para um mesmo eletrodo, use esta fun\[CCedilla]\[ATilde]o recursivamente.
+Argumentos:
+	zt: matriz de imped\[AHat]ncia transveral;
+	zl: matriz de imped\[AHat]ncia longitudinal;
+	eletrodos: lista de listas dos eletrodos '{{ponto_inicial}, {ponto_final}, raio, imped\[AHat]ncia_interna_total}';
+	imagens: lista de listas, onde imagens[[i]] \[EAcute] a imagem de eletrodos[[i]] (se n\[ATilde]o houver imagem para ele, ent\[ATilde]o ela deve ser Null. Neste caso, inclusive, o eletrodo n\[ATilde]o receber\[AAcute] influ\[EHat]ncia de qualquer imagem);
+	\[Gamma]: constante de propaga\[CCedilla]\[ATilde]o do meio;
+	c: condutividade el\[EAcute]trica complexa do meio (\[Sigma] + I \[Omega] \[Epsilon]);
+	\[Mu]: permeabilidade magn\[EAcute]tica do meio;
+	\[Omega]: frequ\[EHat]ncia angular;
+	coefReflexao: opicional, o coeficiente de reflex\[ATilde]o para as imagens;
+		padr\[ATilde]o = 1.0
+	simplificado: opicional, Booleano se considera Exp[-\[Gamma] \[Eta]] constante ou n\[ATilde]o durante a integra\[CCedilla]\[ATilde]o.
+		padr\[ATilde]o = False
 -------
 Retorna:
 	ZT: matriz de imped\[AHat]ncia transveral com efeito das imagens incluso;
@@ -584,6 +692,47 @@ Argumentos:
 	m: o espa\[CCedilla]amento do primeiro lado;
 	b: o comprimento do segundo lado;
 	n: o espa\[CCedilla]amento do segundo lado;
+-------
+Retorna:
+	{nodes, eletrodos}";
+
+
+SegmentarEletrodo[eletrodo_,r_:10] :=
+Block[{d,L,n,nodes,eletrodos},
+	d = eletrodo[[2]] - eletrodo[[1]];
+	L = Norm[d];
+	n = Round[L/(r*eletrodo[[3]])];
+	d = d/n;
+	nodes = Table[eletrodo[[1]]+i*d,{i,0,n}];
+	eletrodos = Table[{nodes[[i]], nodes[[i+1]], eletrodo[[3]], eletrodo[[4]]}, {i,Length[nodes]-1}];
+	{nodes, eletrodos}
+]
+DividirEletrodo::usage=
+"Dado um eletrodo, segmenta-o tal que o comprimento de cada subdivis\[ATilde]o seja 'r' vezes o raio do eletrodo.
+Argumentos:
+	eletrodo: lista '{{ponto_inicial}, {ponto_final}, raio, imped\[AHat]ncia_interna_total}';
+	r: opcional, propor\[CCedilla]\[ATilde]o do comprimento de cada segmento pelo raio do eletrodo.
+		padr\[ATilde]o = 10
+-------
+Retorna:
+	{nodes, eletrodos}";
+
+
+SegmentarListaEletrodos[eletrodos_,r_:10] :=
+Block[{arr,nodes,novosEletrodos},
+	arr = Table[SegmentarEletrodo[e, r], {e, eletrodos}];
+	nodes = DeleteDuplicates[ArrayFlatten[arr[[All,1]], 1]];
+	novosEletrodos = ArrayFlatten[arr[[All,2]], 1];
+	{nodes, novosEletrodos}
+]
+SegmentarListaEletrodos::usage=
+"Dado uma lista de eletrodos, segmenta-os tal que o comprimento de cada subdivis\[ATilde]o seja 'r' vezes o raio do eletrodo.
+Esta fun\[CCedilla]\[ATilde]o e um embrulho para SegmentarEletrodo a qual deleta nodes duplicados e preprocessa as listas resultantes para um formato conveniente.
+Para estabelecer a posi\[CCedilla]\[ATilde]o de um node na lista de nodes, pode-se usar Position[nodes, nodeInteresse].
+Argumentos:
+	eletrodos: lista de eletrodos;
+	r: opcional, propor\[CCedilla]\[ATilde]o do comprimento de cada segmento pelo raio dos eletrodos (feito individualmente).
+		padr\[ATilde]o = 10
 -------
 Retorna:
 	{nodes, eletrodos}";
