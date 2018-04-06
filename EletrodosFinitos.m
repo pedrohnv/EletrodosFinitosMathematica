@@ -707,7 +707,7 @@ Block[{d,L,n,nodes,eletrodos},
 	eletrodos = Table[{nodes[[i]], nodes[[i+1]], eletrodo[[3]], eletrodo[[4]]}, {i,Length[nodes]-1}];
 	{nodes, eletrodos}
 ]
-DividirEletrodo::usage=
+SegmentarEletrodo::usage=
 "Dado um eletrodo, segmenta-o tal que o comprimento de cada subdivis\[ATilde]o seja 'r' vezes o raio do eletrodo.
 Argumentos:
 	eletrodo: lista '{{ponto_inicial}, {ponto_final}, raio, imped\[AHat]ncia_interna_total}';
